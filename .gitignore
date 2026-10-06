@@ -1,0 +1,8 @@
+# Laufzeitdaten (Meldungen, Benutzer mit Passwort-Hashes)
+data/
+
+# Server-Konfiguration
+.env
+
+node_modules/
+*.log
