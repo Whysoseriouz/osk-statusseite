@@ -107,7 +107,7 @@ function messageCard(m, data, now) {
 </article>`;
 }
 
-function publicPage(data, now) {
+function publicPage(data, now, baseUrl) {
   const s = data.settings;
   const v = model.compute(data, now);
   const L = model.LEVELS[v.overall];
@@ -209,6 +209,13 @@ function publicPage(data, now) {
     bodyClass: 'public',
     head: `<meta http-equiv="refresh" content="60">
 <meta name="description" content="${esc(s.intro)}">
+<meta property="og:type" content="website">
+<meta property="og:title" content="${esc(s.company)} – ${esc(L.banner)}">
+<meta property="og:description" content="${esc(s.intro)}">
+<meta property="og:url" content="${esc(baseUrl)}/">
+<meta property="og:image" content="${esc(feedImage(baseUrl, LEVEL_IMAGE[L.key]))}">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="apple-touch-icon" href="/static/feed/icon.png">
 <link rel="alternate" type="application/rss+xml" title="${esc(s.company)} Status" href="/feed.xml">`,
   });
 }
@@ -233,6 +240,17 @@ function publicJson(data, now) {
   };
 }
 
+// Statusbild (app/public/feed/*.png) passend zu Meldung und Phase
+function imageKey(m, phase) {
+  if (m.type === 'info') return 'info';
+  if (model.isClosedPhase(m.type, phase) || phase === 'beobachtung') return m.type === 'wartung' ? 'abgeschlossen' : 'behoben';
+  if (m.type === 'wartung') return 'wartung';
+  return { gering: 'eingeschraenkt', teilausfall: 'teilausfall', ausfall: 'ausfall' }[m.impact] || 'eingeschraenkt';
+}
+
+const LEVEL_IMAGE = { ok: 'ok', maint: 'wartung', minor: 'eingeschraenkt', major: 'teilausfall', critical: 'ausfall' };
+const feedImage = (baseUrl, key) => `${baseUrl}/static/feed/${key}.png`;
+
 function rss(data, now, baseUrl) {
   const s = data.settings;
   const items = [];
@@ -243,22 +261,41 @@ function rss(data, now, baseUrl) {
   items.sort((a, b) => Date.parse(b.u.at) - Date.parse(a.u.at));
   const xml = items
     .slice(0, 50)
-    .map(
-      ({ m, u }) => `<item>
-  <title>${esc(`${model.TYPES[m.type].label}: ${m.title} – ${model.phaseLabel(m.type, u.phase)}`)}</title>
+    .map(({ m, u }) => {
+      const img = feedImage(baseUrl, imageKey(m, u.phase));
+      const phase = model.phaseLabel(m.type, u.phase);
+      const affected = componentNames(m, data);
+      const html = [
+        `<p><img src="${esc(img)}" alt="${esc(phase)}" width="1200" height="630"></p>`,
+        m.type !== 'info' ? `<p><strong>Status:</strong> ${esc(phase)}</p>` : '',
+        affected.length ? `<p><strong>Betroffen:</strong> ${affected.map(esc).join(', ')}</p>` : '',
+        paragraphs(u.text),
+        `<p><a href="${esc(baseUrl)}/">Zur Statusseite</a></p>`,
+      ].join('');
+      return `<item>
+  <title>${esc(`${model.TYPES[m.type].label}: ${m.title}${m.type !== 'info' ? ` – ${phase}` : ''}`)}</title>
   <link>${esc(baseUrl)}/</link>
   <guid isPermaLink="false">${m.id}-${u.id}</guid>
-  <description>${esc(u.text)}</description>
-</item>`
-    )
+  <description>${esc(html)}</description>
+  <media:content url="${esc(img)}" medium="image" type="image/png" width="1200" height="630"/>
+  <media:thumbnail url="${esc(img)}" width="1200" height="630"/>
+</item>`;
+    })
     .join('\n');
+  const icon = `${baseUrl}/static/feed/icon.png`;
   return `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0">
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/" xmlns:webfeeds="http://webfeeds.org/rss/1.0">
 <channel>
 <title>${esc(s.company)} – Status</title>
 <link>${esc(baseUrl)}/</link>
+<atom:link href="${esc(baseUrl)}/feed.xml" rel="self" type="application/rss+xml"/>
 <description>Störungen, Wartungen und Hinweise</description>
 <language>de-de</language>
+<image><url>${esc(icon)}</url><title>${esc(s.company)} – Status</title><link>${esc(baseUrl)}/</link></image>
+<webfeeds:icon>${esc(icon)}</webfeeds:icon>
+<webfeeds:logo>${esc(baseUrl)}/static/logo.png</webfeeds:logo>
+<webfeeds:cover image="${esc(feedImage(baseUrl, 'ok'))}"/>
+<webfeeds:accentColor>98002F</webfeeds:accentColor>
 ${xml}
 </channel>
 </rss>`;

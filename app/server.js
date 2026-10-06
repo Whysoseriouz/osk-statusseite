@@ -29,6 +29,16 @@ for (const [route, file, type] of [
   const body = fs.readFileSync(path.join(__dirname, 'public', file));
   STATIC[route] = { body, type, etag: '"' + crypto.createHash('sha1').update(body).digest('hex').slice(0, 16) + '"' };
 }
+// Statusbilder für RSS-Feed und Link-Vorschau
+for (const file of fs.readdirSync(path.join(__dirname, 'public', 'feed'))) {
+  if (!file.endsWith('.png')) continue;
+  const body = fs.readFileSync(path.join(__dirname, 'public', 'feed', file));
+  STATIC[`/static/feed/${file}`] = {
+    body,
+    type: 'image/png',
+    etag: '"' + crypto.createHash('sha1').update(body).digest('hex').slice(0, 16) + '"',
+  };
+}
 
 const SECURITY_HEADERS = {
   'Content-Security-Policy':
@@ -238,7 +248,7 @@ async function handle(req, res) {
       }
       return send(res, 200, st.body, st.type, { ETag: st.etag, 'Cache-Control': 'public, max-age=300' });
     }
-    if (p === '/') return send(res, 200, views.publicPage(store.get(), now), undefined, { 'Cache-Control': 'no-cache' });
+    if (p === '/') return send(res, 200, views.publicPage(store.get(), now, baseUrl(req)), undefined, { 'Cache-Control': 'no-cache' });
     if (p === '/api/status.json')
       return send(res, 200, JSON.stringify(views.publicJson(store.get(), now), null, 2), 'application/json; charset=utf-8', {
         'Access-Control-Allow-Origin': '*',
